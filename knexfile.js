@@ -2,11 +2,11 @@ module.exports = {
   production: {
     client: 'pg',
     connection: {
-      host: '192.168.2.36',
+      host: '192.168.12.51',
       port: '5432',
       user: "postgres",
-      password: "Engefoto#750",
-      database: "dev_edisonwashimi"
+      password: "b6PWZ32PQ9WzWZks",
+      database: "geofloripa"
     }
   }
 };

@@ -19,13 +19,13 @@ module.exports = {
 
       const inscricaoTerritorialFormated = inscricaoTerritorial.replace(/([^0-9])/g, '');
 
-      const leiMae = await getLeiMae(inscricaoFormated, inscricaoTerritorialFormated);
+      const leiMae = await getLeiMae(inscricaoTerritorialFormated);
 
       if (leiMae === '') {
         return res.status(400).json({ erro: 'Inscrição não Geocodificada!' });
       }
 
-      // const fl_response = await getEdificada(inscricaoFormated);
+      const fl_response = await getEdificada(inscricaoTerritorialFormated);
 
       const cnaesResult = [];
 
@@ -49,59 +49,56 @@ module.exports = {
           continue;
         }
 
-        const array_parecer = await getParecer(inscricaoFormated, inscricaoTerritorialFormated, response.cd_classe, response.cd_secao);
+        const array_parecer = await getParecer(inscricaoImobiliaria.replace(/([^0-9])/g, ''), inscricaoTerritorialFormated, response.cd_classe, response.cd_secao);
 
+        if (array_parecer.length > 0) {
+          for (let i = 0; i < array_parecer.length; i++) {
+            var parecer = '';
+
+            //CONCATENANDO PARECER COM LIMITACOES DE USO
+            if (parecer === '') { //CASO NAO TENHA CAIDO EM NENHUM CASO ESPECIAL(excecao)
+              parecer = array_parecer[i]['parecer'] + '. ';
+              if (array_parecer[i]['comp_adeq_uso'] !== '') {
+                parecer += array_parecer[i]['comp_adeq_uso'] + ' = ';
+              }
+              if (array_parecer[i]['limitacao']!== '') {
+                parecer += array_parecer[i]['limitacao'];
+              }
+              if (array_parecer[i]['tp_uso'] !== '') {
+                if (parecer !== '') {
+                  parecer += ' ' + array_parecer[i]['tp_uso'] + ' = ' + array_parecer[i]['uso'] + '.';
+                } else {
+                  parecer += array_parecer[i]['tp_uso'] + ' = ' + array_parecer[i]['uso'] + '.';
+                }
+              }
+            }
+
+            cnaesResult.push({
+              cnae: cnaeCod,
+              // status: array_parecer[i].status,
+              lei: array_parecer[i].lei_2,
+              lei_alteracao: array_parecer[i].lei,
+              nm_zon: array_parecer[i].nm_zon,
+              de_zon: array_parecer[i].zon,
+              parecer,
+              porcentagem: array_parecer[i].porcentagem,
+              viavel: (array_parecer[i].letra_parecer === 'A'),
+            });
+          }
+        } else {
+          cnaesResult.push({
+            cnae: cnaeCod,
+            viavel: false,
+          })
+        }
       }
-        
 
-      //   if (array_parecer.length > 0) {
-      //     for (let i = 0; i < array_parecer.length; i++) {
-      //       var parecer = '';
-
-      //       //CONCATENANDO PARECER COM LIMITACOES DE USO
-      //       if (parecer === '') { //CASO NAO TENHA CAIDO EM NENHUM CASO ESPECIAL(excecao)
-      //         parecer = array_parecer[i]['parecer'] + '. ';
-      //         if (array_parecer[i]['comp_adeq_uso'] !== '') {
-      //           parecer += array_parecer[i]['comp_adeq_uso'] + ' = ';
-      //         }
-      //         if (array_parecer[i]['limitacao']!== '') {
-      //           parecer += array_parecer[i]['limitacao'];
-      //         }
-      //         if (array_parecer[i]['tp_uso'] !== '') {
-      //           if (parecer !== '') {
-      //             parecer += ' ' + array_parecer[i]['tp_uso'] + ' = ' + array_parecer[i]['uso'] + '.';
-      //           } else {
-      //             parecer += array_parecer[i]['tp_uso'] + ' = ' + array_parecer[i]['uso'] + '.';
-      //           }
-      //         }
-      //       }
-
-      //       cnaesResult.push({
-      //         cnae: cnaeCod,
-      //         // status: array_parecer[i].status,
-      //         lei: array_parecer[i].lei_2,
-      //         lei_alteracao: array_parecer[i].lei,
-      //         nm_zon: array_parecer[i].nm_zon,
-      //         de_zon: array_parecer[i].zon,
-      //         parecer,
-      //         porcentagem: array_parecer[i].porcentagem,
-      //         viavel: (array_parecer[i].letra_parecer === 'A'),
-      //       });
-      //     }
-      //   } else {
-      //     cnaesResult.push({
-      //       cnae: cnaeCod,
-      //       viavel: false,
-      //     })
-      //   }
-      // }
-
-      // return res.json({ 
-      //   inscricaoImobiliaria: inscricaoImobiliaria,
-      //   fl_edificada: fl_response.fl_edificada,
-      //   fl_edificada_desc : fl_response.fl_edificada_desc,
-      //   cnaes: cnaesResult,
-      // });
+      return res.json({ 
+        inscricaoImobiliaria: inscricaoImobiliaria,
+        fl_edificada: fl_response.fl_edificada,
+        fl_edificada_desc : fl_response.fl_edificada_desc,
+        cnaes: cnaesResult,
+      });
 
       return res.json({
         inscricaoFormated
@@ -112,6 +109,31 @@ module.exports = {
     }
   },
 };
+
+async function getEdificada(inscricaoTerritorial) {
+  try {
+    var response = {};
+
+    const { rows } = await connection.raw(`
+      select a.description as descricao
+      From geowise."types" a, urbano.territoriais t
+      where t.fields -> 'tipo_ocupacao_id' = a.id::varchar
+      and replace(t.inscricao ,'.','') = '${inscricaoTerritorial}'
+    `);
+
+    if (rows && rows.length > 0) {
+      response.fl_edificada = rows[0].descricao === 'Construído' ? 'S' : 'N';
+      response.fl_edificada_desc = rows[0].descricao;
+    } else {
+      response.fl_edificada = 'Não encontrada';
+      response.fl_edificada_desc = 'Não encontrada';
+    }
+
+    return response;
+  } catch (error) {
+    throw new Error('Internal server error.');
+  }
+}
 
 async function validaInscrica(inscricaoImobiliaria) {
   try {
@@ -139,7 +161,7 @@ async function validaInscrica(inscricaoImobiliaria) {
   }
 }
 
-async function getLeiMae(inscricaoImobiliaria, inscricaoTerritorial) {
+async function getLeiMae(inscricaoTerritorial) {
   try {
     const { rows: search } = await connection.raw(`
       select z.fields -> 'lei_2' as lei_2
@@ -151,38 +173,6 @@ async function getLeiMae(inscricaoImobiliaria, inscricaoTerritorial) {
     let leiInsc = '';
 
     if (search && search.length > 0) leiInsc = search[0].lei_2;
-
-    // Caso nao retorne nada eh pq area do lote estah completamente em cima de sv
-    // if (leiInsc === '') {
-    //   const { rows: search2 } = await connection.raw(`
-    //     SELECT DISTINCT public.plan_zon_pd_sv.lei_2
-    //     FROM ((ctu.cotr_imobiliario RIGHT JOIN public.cad_lote
-    //     ON ctu.cotr_imobiliario.cd_lote = public.cad_lote.cd_lote)
-    //     RIGHT JOIN public.plan_sv_join
-    //     ON public.cad_lote.mslink = public.plan_sv_join.cd_mslink_lote)
-    //     RIGHT JOIN public.plan_zon_pd_sv
-    //     ON public.plan_sv_join.cd_mslink_sv = public.plan_zon_pd_sv.mslink
-    //     WHERE ctu.cotr_imobiliario.nu_insc_imbl = '${inscricaoImobiliaria}'
-    //   `);
-
-    //   if (search2 && search2.length > 0) leiInsc = search2[0].lei_2;
-    // }
-
-    // // Caso nao retorne nada eh pq area do lote esta completamente em cima de projeto de engenharia
-    // if (leiInsc === '') {
-    //   const { rows: search3 } = await connection.raw(`
-    //     SELECT DISTINCT public.plan_zon_pd_sv_proj.lei_2
-    //     FROM ((ctu.cotr_imobiliario RIGHT JOIN public.cad_lote
-    //     ON ctu.cotr_imobiliario.cd_lote = public.cad_lote.cd_lote)
-    //     RIGHT JOIN public.plan_sv_proj_join
-    //     ON public.cad_lote.mslink = public.plan_sv_proj_join.cd_mslink_lote)
-    //     RIGHT JOIN public.plan_zon_pd_sv_proj
-    //     ON public.plan_sv_proj_join.cd_mslink_sv = public.plan_zon_pd_sv_proj.mslink
-    //     WHERE ctu.cotr_imobiliario.nu_insc_imbl = '${inscricaoImobiliaria}'
-    //   `);
-
-    //   if (search3 && search3.length > 0) leiInsc = search3[0].lei_2;
-    // }
 
     // Se as três retornarem vazio é pq nao existe na tabela join
     return leiInsc;
@@ -232,7 +222,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
   var array_ret = [];
   var cont_tmp = 0;
 
-  // var array_val = await getZonValida(inscricaoImobiliaria);
+  var array_val = await getZonValida(inscricaoImobiliaria);
 
   try {
     const { rows: search } = await connection.raw(`
@@ -256,8 +246,6 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
         var campo = `uso_${row.letras.toLocaleLowerCase()}`;
         var tp_zo = row.tp_zon;
         var porcentagem = row.porcentagem;
-
-        console.log(campo, tp_zo, uso);
         
         //split no campo $campo para pegar as tres primeiras letras do zoneamento
         var ini = campo.split('_');
@@ -270,58 +258,33 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
           } else {
 
             const { rows: row1 } = await connection.raw(`
-              SELECT DISTINCT		
-                viabilidade.plan_zon_uso.${campo},
-                public.plan_zon_pd_pri_pdp.tp_zon,
-                public.plan_zon_pd_pri_pdp.lei_2,
+            Select U.fields -> '${iniciais}' as ${campo},
+                Z.fields -> 'nome' as tp_zon,
+                Z.fields -> 'lei_2' as lei_2,
                 '${uso}' as uso,
-                (select desc_uso from viabilidade.plan_zon_uso where cd_classe='${uso}') as desc_uso,
-                viabilidade.plan_zon_areas.nm_zon,
-                public.plan_zon_pd_pri_pdp.lei
-              FROM 
-                ((((ctu.cotr_imobiliario LEFT JOIN public.cad_lote
-                ON ctu.cotr_imobiliario.cd_lote = public.cad_lote.cd_lote) 
-                LEFT JOIN public.plan_zon_pd_pri_pdp_join
-                ON public.cad_lote.mslink = public.plan_zon_pd_pri_pdp_join.cd_mslink_lote)
-                LEFT JOIN public.plan_zon_pd_pri_pdp 
-                ON public.plan_zon_pd_pri_pdp_join.cd_mslink_zon = public.plan_zon_pd_pri_pdp.mslink)
-                LEFT JOIN viabilidade.plan_zon_uso
-                ON  public.plan_zon_pd_pri_pdp.lei_2=viabilidade.plan_zon_uso.lei)  
-                LEFT JOIN viabilidade.plan_zon_areas
-                ON (public.plan_zon_pd_pri_pdp.lei=viabilidade.plan_zon_areas.lei
-                AND public.plan_zon_pd_pri_pdp.tp_zon=viabilidade.plan_zon_areas.tp_zon)
-              WHERE 
-                ctu.cotr_imobiliario.nu_insc_imbl='${inscricaoImobiliaria}'
-                AND viabilidade.plan_zon_uso.cd_classe='${uso}'
-                AND public.plan_zon_pd_pri_pdp.tp_zon='${tp_zo}'
+                U.fields -> 'nome' as desc_uso,
+                Z.fields -> 'descricao' as nm_zon,
+                Z.fields -> 'lei' as lei
+            from urbano.zonas Z
+                left join urbano.territoriais T
+                  on ST_Intersects(T.geoinformation, Z.geoinformation)
+                left join urbano.usos U
+                  on U.fields -> 'lei' = Z.fields -> 'lei_2'
+            where replace(T.inscricao,'.','')='${inscricaoTerritorial}'
+              and U.fields -> 'cd_classe' = '${uso}'
+              and Z.fields -> 'nome' = '${tp_zo}'
             `);
-
-
-            // Select U.fields -> 'AMC' as uso_amc,
-            //       Z.fields -> 'nome',
-            //       Z.fields -> 'lei_2',
-            //       '45.11-1' as uso,
-            //       U.fields -> 'nome' as desc_uso,
-            //       Z.fields -> 'descricao',
-            //       Z.fields -> 'lei'
-            //   from urbano.zonas Z
-            //       left join urbano.territoriais T
-            //         on ST_Intersects(T.geoinformation, Z.geoinformation)
-            //       left join urbano.usos U
-            //         on U.fields -> 'lei' = Z.fields -> 'lei_2'
-            // where replace(T.inscricao,'.','')='52480860171'
-            //   and U.fields -> 'cd_classe' = '45.11-1'
-            //   and Z.fields -> 'nome' = 'AMC 6.5'
     
             //1º split retorna a letra do tipo de adequacao na primeira parte do split, ou seja, 
             //no $parecer_array[0](ex: A) e as demais parte(s) ($parecer_array[1],etc...) as limitacoes e usos (ex: 10-p)
             var parecer_array = row1[0][campo].split('-');				
             var parecer_texto = parecer_array[0];
+            if (parecer_array.length > 1) parecer_texto += '-'
 
             const { rows: row2 } = await connection.raw(`
-              SELECT viabilidade.plan_zon_adeq.desc_adeq
-              FROM viabilidade.plan_zon_adeq
-              WHERE viabilidade.plan_zon_adeq.tp_adeq='${parecer_texto}'
+              select t.description as desc_adeq
+              from geowise."types" t 
+              where t."type" = 'Urbano::TipoAdequacao' and t.integration_code = '${parecer_texto}'
             `);
             
             //retorna a adequecao das areas (ex: Tolerável)	
@@ -349,9 +312,9 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
                         nums += `,${aux}`;
                     }
                     const { rows: search3 } = await connection.raw(`
-                      SELECT viabilidade.plan_zon_adeq_le.desc_le, viabilidade.plan_zon_adeq_le.tp_le
-                      FROM viabilidade.plan_zon_adeq_le
-                      WHERE viabilidade.plan_zon_adeq_le.tp_le='${aux}'AND lei='${row1[0].lei_2}'
+                      select t.description as desc_le, t.integration_code as tp_le
+                      from geowise."types" t 
+                      where t."type" = 'Urbano::TipoAdequacaoLE' and t.integration_code = '${aux}'
                     `);
                           
                     var row4 = search3[0];
@@ -364,10 +327,9 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
 
                   } else { //senao é nro=> consulta na tabela plan_zon_adequacao_uso
                     const { rows: search4 } = await connection.raw(`
-                      SELECT viabilidade.plan_zon_adequacao_uso.desc_adeq_uso,
-                      viabilidade.plan_zon_adequacao_uso.tp_adeq_uso
-                      FROM viabilidade.plan_zon_adequacao_uso
-                      WHERE viabilidade.plan_zon_adequacao_uso.tp_adeq_uso='${aux}'
+                      select t.description as desc_adeq_uso, t.integration_code as tp_adeq_uso
+                      from geowise."types" t 
+                      where t."type" = 'Urbano::TipoAdequacaoUso' and t.integration_code = '${aux.toUpperCase()}'
                     `);
 
                     var row5 = search4[0];
@@ -407,34 +369,23 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
           var ini = campo.split('_');
           var iniciais = ini[1].toUpperCase();
 
-          // console.log(campo, uso, inscricaoImobiliaria, solicita, tp_zo);
-
           //retorna os usos de adequação da tabela plan_zon_uso  (ex: A-10-p)
           const { rows: search5 } = await connection.raw(`
-            SELECT DISTINCT --a unica alteração foi colocar o distinct 			
-              viabilidade.plan_zon_uso.${campo},
-              public.plan_zon_pd_pri_pdp.tp_zon,
-              public.plan_zon_pd_pri_pdp.lei_2,
+          Select U.fields -> '${iniciais}' as ${campo},
+              Z.fields -> 'nome' as tp_zon,
+              Z.fields -> 'lei_2' as lei_2,
               '${uso}' as uso,
-              (select desc_uso from viabilidade.plan_zon_uso where cd_classe='${uso}') as desc_uso,
-              viabilidade.plan_zon_areas.nm_zon,
-              public.plan_zon_pd_pri_pdp.lei
-            FROM 
-              ((((ctu.cotr_imobiliario LEFT JOIN public.cad_lote
-              ON ctu.cotr_imobiliario.cd_lote = public.cad_lote.cd_lote) 
-              LEFT JOIN public.plan_zon_pd_pri_pdp_join
-              ON public.cad_lote.mslink = public.plan_zon_pd_pri_pdp_join.cd_mslink_lote)
-              LEFT JOIN public.plan_zon_pd_pri_pdp 
-              ON public.plan_zon_pd_pri_pdp_join.cd_mslink_zon = public.plan_zon_pd_pri_pdp.mslink)
-              LEFT JOIN viabilidade.plan_zon_uso
-              ON  public.plan_zon_pd_pri_pdp.lei_2=viabilidade.plan_zon_uso.lei)  
-              LEFT JOIN viabilidade.plan_zon_areas
-              ON (public.plan_zon_pd_pri_pdp.lei=viabilidade.plan_zon_areas.lei
-              AND public.plan_zon_pd_pri_pdp.tp_zon=viabilidade.plan_zon_areas.tp_zon)
-            WHERE 
-              ctu.cotr_imobiliario.nu_insc_imbl='${inscricaoImobiliaria}'
-              AND viabilidade.plan_zon_uso.cd_classe='${uso}'
-              AND public.plan_zon_pd_pri_pdp.tp_zon='${tp_zo}'
+              U.fields -> 'nome' as desc_uso,
+              Z.fields -> 'descricao' as nm_zon,
+              Z.fields -> 'lei' as lei
+          from urbano.zonas Z
+              left join urbano.territoriais T
+                on ST_Intersects(T.geoinformation, Z.geoinformation)
+              left join urbano.usos U
+                on U.fields -> 'lei' = Z.fields -> 'lei_2'
+          where replace(T.inscricao,'.','')='${inscricaoTerritorial}'
+            and U.fields -> 'cd_classe' = '${uso}'
+            and Z.fields -> 'nome' = '${tp_zo}'
           `);
 
           var compara = '';
@@ -442,6 +393,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
             compara = array_val[0].tp_zon;
           } //senao volta todos, ou seja, nao marca nada
           
+
           for (row11 of search5) {
             var ret = '';
             var ret_uso = '';
@@ -470,11 +422,12 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
                 //no $parecer_array[0](ex: A) e as demais parte(s) ($parecer_array[1],etc...) as limitacoes e usos (ex: 10-p)
                 var parecer_array = row11[campo].split('-');		
                 var parecer_texto = parecer_array[0];
+                if (parecer_array.length > 1) parecer_texto += '-'
 
                 const { rows: search6 } = await connection.raw(`
-                  SELECT viabilidade.plan_zon_adeq.desc_adeq
-                  FROM viabilidade.plan_zon_adeq
-                  WHERE viabilidade.plan_zon_adeq.tp_adeq='${parecer_texto}'
+                  select t.description as desc_adeq
+                  from geowise."types" t 
+                  where t."type" = 'Urbano::TipoAdequacao' and t.integration_code = '${parecer_texto}'
                 `);
 
                 var row_ = search6[0];
@@ -503,9 +456,9 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
                         }
 
                         const { rows: sql_busca4 } = await connection.raw(`
-                          SELECT viabilidade.plan_zon_adeq_le.desc_le, viabilidade.plan_zon_adeq_le.tp_le
-                          FROM viabilidade.plan_zon_adeq_le
-                          WHERE viabilidade.plan_zon_adeq_le.tp_le='${aux}'AND lei='${row11.lei_2}'
+                          select t.description as desc_le, t.integration_code as tp_le
+                          from geowise."types" t 
+                          where t."type" = 'Urbano::TipoAdequacaoLE' and t.integration_code = '${aux}'
                         `);
                               
                         var row4 = sql_busca4[0];
@@ -517,10 +470,9 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
                         }
                       } else { //senao é nro=> consulta na tabela plan_zon_adequacao_uso
                         const { rows: search4 } = await connection.raw(`
-                          SELECT viabilidade.plan_zon_adequacao_uso.desc_adeq_uso,
-                          viabilidade.plan_zon_adequacao_uso.tp_adeq_uso
-                          FROM viabilidade.plan_zon_adequacao_uso
-                          WHERE viabilidade.plan_zon_adequacao_uso.tp_adeq_uso='${aux}'
+                          select t.description as desc_adeq_uso, t.integration_code as tp_adeq_uso
+                          from geowise."types" t 
+                          where t."type" = 'Urbano::TipoAdequacaoUso' and t.integration_code = '${aux.toUpperCase()}'
                         `);
 
                         var row5 = search4[0];
@@ -563,8 +515,257 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
     }
 
   } catch (error) {
-    // console.log(error)
     return array_ret;
   }
+  return array_ret;
+}
+
+async function getZonValida(inscricaoImobiliaria) {
+  var array_sv = [];
+  var array_sv_aux = [];
+  let count_aux = 0;
+
+  try {
+    const { rows: search } = await connection.raw(`
+      select distinct on (e.cd_logr,e.tp_zon)
+          e.cd_logr,
+          e.tp_zon,
+          trim(regexp_replace(e.tp_zon,' ','','g')) as tp_zon,
+          e.lei,
+          e.lei_2,
+          case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+              when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
+              when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+              else 'false'
+          end as resposta,
+          f.fields -> 'nome' as cd_sv
+      from (select c.cd_logr,
+                  c.geom_centerline,
+                  c.geom_lote,
+                  c.cd_lote,
+                  d.fields -> 'nome' as tp_zon,
+                  d.fields -> 'descricao' as nm_zon,
+                  d.fields -> 'lei' as lei,
+                  d.fields -> 'lei_2' as lei_2,
+                  d.geoinformation as geom_zon,
+                  st_distance(st_Intersection(c.geom_lote, d.geoinformation), c.geom_centerline) as distancia,
+                  st_area(st_Intersection(c.geom_lote, d.geoinformation)) as area,
+                  st_intersection(c.geom_lote, d.geoinformation) as intersecao
+            from (select distinct
+                          t3.logradouro_id as cd_logr,
+                          substring(regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g'), 1, 11) as cd_lote,
+                          t3.geoinformation as geom_centerline,
+                          t.geoinformation  as geom_lote,
+                          st_area(ST_Intersection(t.geoinformation, t3.geoinformation)) as area_inter_lote_centerline,
+                          st_astext(st_centroid(t3.geoinformation)),
+                          st_distance(t3.geoinformation, t.geoinformation) as dist
+                    from urbano.avaliacoes a
+                          inner join urbano.autonomas a2
+                            on a2.id = a.autonoma_id
+                          inner join urbano.territoriais t
+                            on t.id = a2.territorial_id
+                          inner join urbano.propriedades p
+                            on p.autonoma_id = a2.id
+                          inner join urbano.testadas t2
+                            on t2.territorial_id = t.id
+                          inner join urbano.trechos t3
+                            on (t3.logradouro_id::varchar  = t2.fields -> 'logradouro_id'
+                                or t3.logradouro_id::varchar = t2.fields -> 'logradouro_id2'
+                                or t3.logradouro_id::varchar = t2.fields -> 'logradouro_id3'
+                                or t3.logradouro_id::varchar = t2.fields -> 'logradouro_id4')
+                    where st_isvalid(t.geoinformation) = true
+                      and st_isvalid(t3.geoinformation) = true
+                      and st_distance(t.geoinformation, t3.geoinformation) < 30
+                      and regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g') = '${inscricaoImobiliaria}'
+                  ) as c, urbano.zonas d
+            where st_isvalid(c.geom_lote)      = true
+              and st_isvalid(d.geoinformation) = true
+              and st_intersects(c.geom_lote, d.geoinformation)
+              and c.geom_lote && d.geoinformation
+              and st_area(st_Intersection(c.geom_lote, d.geoinformation)) >10
+            order by distancia
+          ) as  e, urbano.vias f
+      where
+        --st_intersects(st_line_interpolate_point(e.geom_centerline,0.50), f.geoinformation) and
+      (st_intersects(e.geom_lote, f.geoinformation) or st_touches(e.geom_lote,f.geoinformation))
+      and case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+              when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
+              when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+              else 'false'
+          end = 'true'
+      order by cd_logr;
+    `);
+
+    if (search.length > 0) {
+
+      for(value of search) {
+        array_sv_aux[count_aux] = {
+          tp_zon: value.tp_zon,
+          lei: value.lei,
+          lei_2: value.lei_2,
+          cd_logr: value.cd_logr,
+          prioridade: value.prioridade,
+          cd_sv: value.cd_sv,
+        };
+        count_aux++;
+      }
+      
+			if (array_sv_aux.length !== 0) {//SE EXITIR RETORNO
+			
+        if (array_sv_aux.length > 1) {//SE FOR MAIS DO QUE UM RETORNO ANALISAR
+					if (array_sv_aux[0].prioridade === array_sv_aux[1].prioridade) {//SE EXISTIR MAIS DE UM COM A MESMA PRIORIDADE
+						//funcao que verifica se tem mais de um logr. 
+						//Paassando por parametro o prioridade para poder ignorar o resto dos que estao no array
+						var varios_logrs = verificaLogr(array_sv_aux, array_sv_aux[0].prioridade);
+						
+						if (varios_logrs) {//verificar qual esta no STM e tratar
+							array_sv = verificaLogrStm(inscricaoImobiliaria);			
+						} else {
+              //voltar todos eles
+              array_sv[0] = { status: '2' };
+						}
+          } else {//SENAO VOLTA O DE MAIOR PRIORIDADE
+            array_sv[0] = {
+              status: '1',
+              tp_zon: array_sv_aux[0].tp_zon,
+              lei: array_sv_aux[0].lei,
+              lei_2: array_sv_aux[0].lei_2,
+              cd_sv: array_sv_aux[0].cd_sv,
+            };
+					}			
+        } else {//SENAO JÁ VOLTA ESSE RESULTADO
+          array_sv[0] = { 
+            status: '1',
+            tp_zon: array_sv_aux[0].tp_zon,
+            lei: search[0].lei,
+            lei_2: search[0].lei_2,
+            cd_sv: array_sv_aux[0].cd_sv,
+          };
+				}
+			}else{
+				//se remeter ao estudo
+				array_sv[0] = { status: '2' };
+			}		
+		}else{
+			//se remeter a estudo
+			array_sv[0] = { status: '2' };
+		}
+
+    return array_sv;
+  } catch (error) {
+    console.log(error);
+  }
+}
+
+function verificaLogr(array_sv_aux, prioridade){
+  let varios_logrs = false;
+  let logr = '';
+
+  for (let i = 0; i < array_sv_aux.length; i++) {
+    if(array_sv_aux[i].prioridade == prioridade){				
+      if ((logr != '') && (logr != array_sv_aux[i].cd_logr)) {
+        varios_logrs = true;
+      } else {
+        varios_logrs = false;
+      }			
+      logr = array_sv_aux[i].cd_logr;
+    }
+  }
+
+  return varios_logrs;
+}
+
+
+async function verificaLogrStm(inscricao){
+  var array_ret = [];
+
+  const { rows: search } = await connection.raw(`
+        select distinct on (e.cd_logr,e.tp_zon)
+        e.cd_logr,
+        e.tp_zon,
+        trim(regexp_replace(e.tp_zon,' ','','g')) as tp_zon,
+        e.lei,
+        e.lei_2,
+        case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+            when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
+            when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+            else 'false'
+        end as resposta,
+        f.fields -> 'nome' as cd_sv
+      from (select c.cd_logr,
+                c.geom_centerline,
+                c.geom_lote,
+                c.cd_lote,
+                d.fields -> 'nome' as tp_zon,
+                d.fields -> 'descricao' as nm_zon,
+                d.fields -> 'lei' as lei,
+                d.fields -> 'lei_2' as lei_2,
+                d.geoinformation as geom_zon,
+                st_distance(st_Intersection(c.geom_lote, d.geoinformation), c.geom_centerline) as distancia,
+                st_area(st_Intersection(c.geom_lote, d.geoinformation)) as area,
+                st_intersection(c.geom_lote, d.geoinformation) as intersecao
+          from (select distinct
+                        t3.logradouro_id as cd_logr,
+                        substring(regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g'), 1, 11) as cd_lote,
+                        t3.geoinformation as geom_centerline,
+                        t.geoinformation  as geom_lote,
+                        st_area(ST_Intersection(t.geoinformation, t3.geoinformation)) as area_inter_lote_centerline,
+                        st_astext(st_centroid(t3.geoinformation)),
+                        st_distance(t3.geoinformation, t.geoinformation) as dist
+                  from urbano.avaliacoes a
+                        inner join urbano.autonomas a2
+                          on a2.id = a.autonoma_id
+                        inner join urbano.territoriais t
+                          on t.id = a2.territorial_id
+                        inner join urbano.propriedades p
+                          on p.autonoma_id = a2.id
+                        inner join urbano.testadas t2
+                          on t2.territorial_id = t.id
+                        inner join urbano.trechos t3
+                          on (t3.logradouro_id::varchar  = t2.fields -> 'logradouro_id'
+                              or t3.logradouro_id::varchar = t2.fields -> 'logradouro_id2'
+                              or t3.logradouro_id::varchar = t2.fields -> 'logradouro_id3'
+                              or t3.logradouro_id::varchar = t2.fields -> 'logradouro_id4')
+                  where st_isvalid(t.geoinformation) = true
+                    and st_isvalid(t3.geoinformation) = true
+                    and st_distance(t.geoinformation, t3.geoinformation) < 30
+                    and regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g') = '${inscricao}'
+                ) as c, urbano.zonas d
+          where st_isvalid(c.geom_lote)      = true
+            and st_isvalid(d.geoinformation) = true
+            and st_intersects(c.geom_lote, d.geoinformation)
+            and c.geom_lote && d.geoinformation
+            and st_area(st_Intersection(c.geom_lote, d.geoinformation)) >10
+          order by distancia
+        ) as  e, urbano.vias f
+      where
+      --st_intersects(st_line_interpolate_point(e.geom_centerline,0.50), f.geoinformation) and
+      (st_intersects(e.geom_lote, f.geoinformation) or st_touches(e.geom_lote,f.geoinformation))
+      and case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+            when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
+            when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+            else 'false'
+        end = 'true'
+      order by cd_logr;
+  `);
+  
+  if ( search.length > 0) {
+    for(value of search) {
+      if (search.length > 1) {
+        array_ret[0] = { status: '2' };
+      } else {
+        array_ret[0] = { 
+          status: '1',
+          tp_zon: value.tp_zon,
+          lei: value.lei,
+          lei_2: value.lei_2,
+          cd_sv: value.cd_sv,
+        };
+      }
+    }
+  } else {
+    array_ret[0] = { status: '2' };
+  }
+
   return array_ret;
 }
