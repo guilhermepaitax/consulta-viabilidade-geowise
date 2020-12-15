@@ -9,7 +9,13 @@ module.exports = {
         return res.status(400).json({ erro: 'Inscrição inválida!' });
       }
 
-      const inscricaoFormated = inscricaoImobiliaria.replace(/([^0-9])/g, '').substring(0, 14);
+      let inscricaoFormated = inscricaoImobiliaria.replace(/([^0-9])/g, '');
+
+      if (inscricaoFormated.length !== 17) {
+        return res.status(400).json({ erro: 'Inscrição inválida!' });
+      }
+
+      inscricaoFormated = inscricaoFormated.substring(0, 14);
 
       const inscricaoTerritorial = await validaInscrica(inscricaoFormated);
       
@@ -49,7 +55,7 @@ module.exports = {
           continue;
         }
 
-        const array_parecer = await getParecer(inscricaoImobiliaria.replace(/([^0-9])/g, ''), inscricaoTerritorialFormated, response.cd_classe, response.cd_secao);
+        const array_parecer = await getParecer(inscricaoImobiliaria.replace(/([^0-9])/g, ''), inscricaoTerritorialFormated, response.cd_classe);
 
         if (array_parecer.length > 0) {
           for (let i = 0; i < array_parecer.length; i++) {
@@ -202,14 +208,16 @@ async function getArrayUsos(codUso, leiMae, numTent) {
         break;
     }
 
+    codUso = codUso.replace(/([^0-9])/g, '');
+
     const { rows: search } = await connection.raw(`
-      select a.fields -> 'cd_plan_zon_uso' as cd_plan_zon_uso, a.fields -> 'lei' as lei,
-      a.fields -> 'cd_secao' as cd_secao, a.fields -> 'nome' as desc_uso, a.fields -> 'codigo' as cd_classe
+      select a.fields -> 'codigo' as cd_classe
         from urbano.atividades a
-        where regexp_replace(a.fields -> 'codigo','[^0-9]','','g') = regexp_replace('${codUso}','[^0-9]','','g')
+        where regexp_replace(a.fields -> 'codigo','[^0-9]','','g') = '${codUso}'
         and a.fields -> 'lei' = '${leiMae}'
     `);
 
+    
     if (!search || search.length <= 0) return false;
 
     return search[0];
@@ -218,7 +226,7 @@ async function getArrayUsos(codUso, leiMae, numTent) {
   }
 }
 
-async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solicita) {
+async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
   var array_ret = [];
   var cont_tmp = 0;
 
@@ -226,17 +234,21 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso, solic
 
   try {
     const { rows: search } = await connection.raw(`
-    SELECT z.fields -> 'descricao' as nm_zon,
-      z.fields -> 'nome' as tp_zon,
-      (st_area(st_intersection((SELECT L.geoinformation from urbano.territoriais L where replace(L.inscricao,'.','')='${inscricaoTerritorial}'),
-      z.geoinformation))/st_area((SELECT L.geoinformation from urbano.territoriais L where replace(L.inscricao,'.','')='${inscricaoTerritorial}'))) * 100 as porcentagem,
-      regexp_replace(z.fields -> 'nome','[^a-zA-Z]','','g') as letras,
-      z.fields -> 'lei' as lei,
-      z.fields -> 'lei_2' as lei_2
-    From urbano.zonas z
-    where ST_Intersects(z.geoinformation, (SELECT L.geoinformation
-        from urbano.territoriais L
-        where replace(L.inscricao,'.','')='${inscricaoTerritorial}'))
+    with territorial as (
+      select inscricao, geoinformation
+        from urbano.territoriais t
+      )     
+      SELECT z.fields -> 'descricao' as nm_zon,
+          z.fields -> 'nome' as tp_zon,
+          (st_area(st_intersection((SELECT L.geoinformation from territorial L where replace(L.inscricao,'.','')='${inscricaoTerritorial}'),
+          z.geoinformation))/st_area((SELECT L.geoinformation from territorial L where replace(L.inscricao,'.','')='${inscricaoTerritorial}'))) * 100 as porcentagem,
+          regexp_replace(z.fields -> 'nome','[^a-zA-Z]','','g') as letras,
+          z.fields -> 'lei' as lei,
+          z.fields -> 'lei_2' as lei_2
+        From urbano.zonas z
+        where ST_Intersects(z.geoinformation, (SELECT L.geoinformation
+            from territorial L
+            where replace(L.inscricao,'.','')='${inscricaoTerritorial}'))
     `);
 
     if (search.length > 0) {
@@ -525,12 +537,14 @@ async function getZonValida(inscricaoImobiliaria) {
   var array_sv_aux = [];
   let count_aux = 0;
 
+  const inscricaoImobiliariaFormated = `${inscricaoImobiliaria.slice(0, 2)}.${inscricaoImobiliaria.slice(2, 4)}.${inscricaoImobiliaria.slice(4, 7)}.${inscricaoImobiliaria.slice(7, 11)}.${inscricaoImobiliaria.slice(11, 14)}`;
+
+
   try {
     const { rows: search } = await connection.raw(`
       select distinct on (e.cd_logr,e.tp_zon)
           e.cd_logr,
           e.tp_zon,
-          trim(regexp_replace(e.tp_zon,' ','','g')) as tp_zon,
           e.lei,
           e.lei_2,
           case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
@@ -576,7 +590,7 @@ async function getZonValida(inscricaoImobiliaria) {
                     where st_isvalid(t.geoinformation) = true
                       and st_isvalid(t3.geoinformation) = true
                       and st_distance(t.geoinformation, t3.geoinformation) < 30
-                      and regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g') = '${inscricaoImobiliaria}'
+                      and a.inscricao = '${inscricaoImobiliariaFormated}'
                   ) as c, urbano.zonas d
             where st_isvalid(c.geom_lote)      = true
               and st_isvalid(d.geoinformation) = true
@@ -600,7 +614,7 @@ async function getZonValida(inscricaoImobiliaria) {
 
       for(value of search) {
         array_sv_aux[count_aux] = {
-          tp_zon: value.tp_zon,
+          tp_zon: value.tp_zon.replace(' ', '').trim(),
           lei: value.lei,
           lei_2: value.lei_2,
           cd_logr: value.cd_logr,
@@ -679,11 +693,13 @@ function verificaLogr(array_sv_aux, prioridade){
 async function verificaLogrStm(inscricao){
   var array_ret = [];
 
+
+  const inscricaoImobiliariaFormated = `${inscricao.slice(0, 2)}.${inscricao.slice(2, 4)}.${inscricao.slice(4, 7)}.${inscricao.slice(7, 11)}.${inscricao.slice(11, 14)}`;
+
   const { rows: search } = await connection.raw(`
         select distinct on (e.cd_logr,e.tp_zon)
         e.cd_logr,
         e.tp_zon,
-        trim(regexp_replace(e.tp_zon,' ','','g')) as tp_zon,
         e.lei,
         e.lei_2,
         case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
@@ -729,7 +745,7 @@ async function verificaLogrStm(inscricao){
                   where st_isvalid(t.geoinformation) = true
                     and st_isvalid(t3.geoinformation) = true
                     and st_distance(t.geoinformation, t3.geoinformation) < 30
-                    and regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g') = '${inscricao}'
+                    and a.inscricao = '${inscricaoImobiliariaFormated}'
                 ) as c, urbano.zonas d
           where st_isvalid(c.geom_lote)      = true
             and st_isvalid(d.geoinformation) = true
@@ -756,7 +772,7 @@ async function verificaLogrStm(inscricao){
       } else {
         array_ret[0] = { 
           status: '1',
-          tp_zon: value.tp_zon,
+          tp_zon: value.tp_zon.replace(' ', '').trim(),
           lei: value.lei,
           lei_2: value.lei_2,
           cd_sv: value.cd_sv,
