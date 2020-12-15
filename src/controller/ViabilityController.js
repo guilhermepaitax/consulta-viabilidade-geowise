@@ -1,17 +1,24 @@
 const connection = require('../database/connection');
 
+var array_val = null;
+var globalSearch = [];
+
 module.exports = {
   async index(req, res) {
     try {
       const { inscricaoImobiliaria, cnaes } = req.body;
 
       if (!inscricaoImobiliaria || inscricaoImobiliaria === '' || !cnaes) {
+        array_val = null;
+        globalSearch = [];
         return res.status(400).json({ erro: 'Inscrição inválida!' });
       }
 
       let inscricaoFormated = inscricaoImobiliaria.replace(/([^0-9])/g, '');
 
       if (inscricaoFormated.length !== 17) {
+        array_val = null;
+        globalSearch = [];
         return res.status(400).json({ erro: 'Inscrição inválida!' });
       }
 
@@ -20,6 +27,8 @@ module.exports = {
       const inscricaoTerritorial = await validaInscrica(inscricaoFormated);
       
       if (inscricaoTerritorial === '') {
+        array_val = null;
+        globalSearch = [];
         return res.status(400).json({ erro: 'Inscrição inválida!' });
       }
 
@@ -28,6 +37,8 @@ module.exports = {
       const leiMae = await getLeiMae(inscricaoTerritorialFormated);
 
       if (leiMae === '') {
+        array_val = null;
+        globalSearch = [];
         return res.status(400).json({ erro: 'Inscrição não Geocodificada!' });
       }
 
@@ -99,6 +110,9 @@ module.exports = {
         }
       }
 
+      array_val = null;
+      globalSearch = [];
+
       return res.json({ 
         inscricaoImobiliaria: inscricaoImobiliaria,
         fl_edificada: fl_response.fl_edificada,
@@ -106,11 +120,9 @@ module.exports = {
         cnaes: cnaesResult,
       });
 
-      return res.json({
-        inscricaoFormated
-      });
-
     } catch (err){
+      array_val = null;
+      globalSearch = [];
       return res.status(500).json({ erro: 'Internal server error.' });
     }
   },
@@ -235,10 +247,6 @@ async function getArrayUsos(codUso, leiMae, numTent) {
   }
 }
 
-var array_val = null;
-var globalSearch = null;
-
-
 async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
   var array_ret = [];
   var cont_tmp = 0;
@@ -251,7 +259,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
 
   try {
 
-    if (!globalSearch) {
+    if (globalSearch.length === 0) {
       const { rows: search } = await connection.raw(`
       with territorial as (
         select inscricao, geoinformation
@@ -270,6 +278,8 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
               where L.inscricao ='${inscricaoTerritorialFormated}'))
       `);
       globalSearch = search;
+
+      console.log(search)
     }
 
 
