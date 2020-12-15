@@ -560,9 +560,10 @@ async function getZonValida(inscricaoImobiliaria) {
           e.tp_zon,
           e.lei,
           e.lei_2,
-          case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+          case 
               when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
               when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+              when st_touches(f.geoinformation ,e.intersecao)     then 'true'
               else 'false'
           end as resposta,
           f.fields -> 'nome' as cd_sv
@@ -615,10 +616,11 @@ async function getZonValida(inscricaoImobiliaria) {
       where
         --st_intersects(st_line_interpolate_point(e.geom_centerline,0.50), f.geoinformation) and
       (st_intersects(e.geom_lote, f.geoinformation) or st_touches(e.geom_lote,f.geoinformation))
-      and case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+      and case
               when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
               when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
-              else 'false'
+              when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+          else 'false'
           end = 'true'
       order by cd_logr;
     `);
@@ -715,9 +717,10 @@ async function verificaLogrStm(inscricao){
         e.tp_zon,
         e.lei,
         e.lei_2,
-        case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+        case 
             when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
             when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+            when st_touches(f.geoinformation ,e.intersecao)     then 'true'
             else 'false'
         end as resposta,
         f.fields -> 'nome' as cd_sv
@@ -770,10 +773,11 @@ async function verificaLogrStm(inscricao){
       where
       --st_intersects(st_line_interpolate_point(e.geom_centerline,0.50), f.geoinformation) and
       (st_intersects(e.geom_lote, f.geoinformation) or st_touches(e.geom_lote,f.geoinformation))
-      and case when st_touches(f.geoinformation ,e.intersecao)     then 'true'
-            when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
-            when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
-            else 'false'
+      and  case
+              when st_intersects(f.geoinformation ,e.intersecao)  then 'true'
+              when st_distance(f.geoinformation ,e.intersecao)<=5 then 'true'
+              when st_touches(f.geoinformation ,e.intersecao)     then 'true'
+          else 'false'
         end = 'true'
       order by cd_logr;
   `);
