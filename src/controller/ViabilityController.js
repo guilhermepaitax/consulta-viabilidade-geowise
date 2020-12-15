@@ -236,6 +236,8 @@ async function getArrayUsos(codUso, leiMae, numTent) {
 }
 
 var array_val = null;
+var globalSearch = null;
+
 
 async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
   var array_ret = [];
@@ -248,26 +250,31 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
   const inscricaoTerritorialFormated = `${inscricaoTerritorial.slice(0, 2)}.${inscricaoTerritorial.slice(2, 4)}.${inscricaoTerritorial.slice(4, 7)}.${inscricaoTerritorial.slice(7, 11)}`;
 
   try {
-    const { rows: search } = await connection.raw(`
-    with territorial as (
-      select inscricao, geoinformation
-        from urbano.territoriais t
-      )     
-      SELECT z.fields -> 'descricao' as nm_zon,
-          z.fields -> 'nome' as tp_zon,
-          (st_area(st_intersection((SELECT L.geoinformation from territorial L where L.inscricao ='${inscricaoTerritorialFormated}'),
-          z.geoinformation))/st_area((SELECT L.geoinformation from territorial L where L.inscricao ='${inscricaoTerritorialFormated}'))) * 100 as porcentagem,
-          z.fields -> 'nome' as letras,
-          z.fields -> 'lei' as lei,
-          z.fields -> 'lei_2' as lei_2
-        From urbano.zonas z
-        where ST_Intersects(z.geoinformation, (SELECT L.geoinformation
-            from territorial L
-            where L.inscricao ='${inscricaoTerritorialFormated}'))
-    `);
 
-    if (search.length > 0) {
-      for(row of search) {
+    if (!globalSearch) {
+      const { rows: search } = await connection.raw(`
+      with territorial as (
+        select inscricao, geoinformation
+          from urbano.territoriais t
+        )     
+        SELECT z.fields -> 'descricao' as nm_zon,
+            z.fields -> 'nome' as tp_zon,
+            (st_area(st_intersection((SELECT L.geoinformation from territorial L where L.inscricao ='${inscricaoTerritorialFormated}'),
+            z.geoinformation))/st_area((SELECT L.geoinformation from territorial L where L.inscricao ='${inscricaoTerritorialFormated}'))) * 100 as porcentagem,
+            z.fields -> 'nome' as letras,
+            z.fields -> 'lei' as lei,
+            z.fields -> 'lei_2' as lei_2
+          From urbano.zonas z
+          where ST_Intersects(z.geoinformation, (SELECT L.geoinformation
+              from territorial L
+              where L.inscricao ='${inscricaoTerritorialFormated}'))
+      `);
+      globalSearch = search;
+    }
+
+
+    if (globalSearch.length > 0) {
+      for(row of globalSearch) {
 
         const letras = row.letras.replace(/[^a-zA-Z]/g, '');
 
@@ -280,7 +287,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
         //split no campo $campo para pegar as tres primeiras letras do zoneamento
         var ini = campo.split('_');
         var iniciais = ini[1].toUpperCase();
-        var num = search.length;
+        var num = globalSearch.length;
 
         if (num === 1) { //SE O LOTE FOR SÓ DE UM TIPO DE ZONEAMENTO
           if (letras === '') {
