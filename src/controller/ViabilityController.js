@@ -120,11 +120,13 @@ async function getEdificada(inscricaoTerritorial) {
   try {
     var response = {};
 
+    const inscricaoImobiliariaFormated = `${inscricaoTerritorial.slice(0, 2)}.${inscricaoTerritorial.slice(2, 4)}.${inscricaoTerritorial.slice(4, 7)}.${inscricaoTerritorial.slice(7, 11)}`;
+
     const { rows } = await connection.raw(`
       select a.description as descricao
       From geowise."types" a, urbano.territoriais t
       where t.fields -> 'tipo_ocupacao_id' = a.id::varchar
-      and replace(t.inscricao ,'.','') = '${inscricaoTerritorial}'
+      and t.inscricao = '${inscricaoImobiliariaFormated}'
     `);
 
     if (rows && rows.length > 0) {
@@ -143,9 +145,13 @@ async function getEdificada(inscricaoTerritorial) {
 
 async function validaInscrica(inscricaoImobiliaria) {
   try {
+
+
+    const inscricaoImobiliariaFormated = `${inscricaoImobiliaria.slice(0, 2)}.${inscricaoImobiliaria.slice(2, 4)}.${inscricaoImobiliaria.slice(4, 7)}.${inscricaoImobiliaria.slice(7, 11)}.${inscricaoImobiliaria.slice(11, 14)}`;
+
     const { rows } = await connection.raw(`
       SELECT territorial_id, ativo FROM urbano.autonomas
-      WHERE replace(urbano.autonomas.inscricao ,'.','') = '${inscricaoImobiliaria}';
+      WHERE urbano.autonomas.inscricao = '${inscricaoImobiliariaFormated}';
     `);
 
     if (!rows ||rows.length <= 0) return '';
@@ -169,11 +175,14 @@ async function validaInscrica(inscricaoImobiliaria) {
 
 async function getLeiMae(inscricaoTerritorial) {
   try {
+
+    const inscricaoImobiliariaFormated = `${inscricaoTerritorial.slice(0, 2)}.${inscricaoTerritorial.slice(2, 4)}.${inscricaoTerritorial.slice(4, 7)}.${inscricaoTerritorial.slice(7, 11)}`;
+
     const { rows: search } = await connection.raw(`
       select z.fields -> 'lei_2' as lei_2
       From urbano.zonas z, urbano.territoriais t
       where ST_Intersects(z.geoinformation, t.geoinformation)
-      and replace(t.inscricao ,'.','') = '${inscricaoTerritorial}'
+      and t.inscricao = '${inscricaoImobiliariaFormated}'
     `);
 
     let leiInsc = '';
@@ -232,6 +241,8 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
 
   var array_val = await getZonValida(inscricaoImobiliaria);
 
+  const inscricaoTerritorialFormated = `${inscricaoTerritorial.slice(0, 2)}.${inscricaoTerritorial.slice(2, 4)}.${inscricaoTerritorial.slice(4, 7)}.${inscricaoTerritorial.slice(7, 11)}`;
+
   try {
     const { rows: search } = await connection.raw(`
     with territorial as (
@@ -240,22 +251,25 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
       )     
       SELECT z.fields -> 'descricao' as nm_zon,
           z.fields -> 'nome' as tp_zon,
-          (st_area(st_intersection((SELECT L.geoinformation from territorial L where replace(L.inscricao,'.','')='${inscricaoTerritorial}'),
-          z.geoinformation))/st_area((SELECT L.geoinformation from territorial L where replace(L.inscricao,'.','')='${inscricaoTerritorial}'))) * 100 as porcentagem,
-          regexp_replace(z.fields -> 'nome','[^a-zA-Z]','','g') as letras,
+          (st_area(st_intersection((SELECT L.geoinformation from territorial L where L.inscricao ='${inscricaoTerritorialFormated}'),
+          z.geoinformation))/st_area((SELECT L.geoinformation from territorial L where L.inscricao ='${inscricaoTerritorialFormated}'))) * 100 as porcentagem,
+          z.fields -> 'nome' as letras,
           z.fields -> 'lei' as lei,
           z.fields -> 'lei_2' as lei_2
         From urbano.zonas z
         where ST_Intersects(z.geoinformation, (SELECT L.geoinformation
             from territorial L
-            where replace(L.inscricao,'.','')='${inscricaoTerritorial}'))
+            where L.inscricao ='${inscricaoTerritorialFormated}'))
     `);
 
     if (search.length > 0) {
       for(row of search) {
+
+        const letras = row.letras.replace(/[^a-zA-Z]/g, '');
+
         var ret = '';
         var ret_uso = '';
-        var campo = `uso_${row.letras.toLocaleLowerCase()}`;
+        var campo = `uso_${letras.toLocaleLowerCase()}`;
         var tp_zo = row.tp_zon;
         var porcentagem = row.porcentagem;
         
@@ -265,7 +279,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
         var num = search.length;
 
         if (num === 1) { //SE O LOTE FOR SÓ DE UM TIPO DE ZONEAMENTO
-          if (row.letras === '') {
+          if (letras === '') {
             
           } else {
 
@@ -282,7 +296,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
                   on ST_Intersects(T.geoinformation, Z.geoinformation)
                 left join urbano.usos U
                   on U.fields -> 'lei' = Z.fields -> 'lei_2'
-            where replace(T.inscricao,'.','')='${inscricaoTerritorial}'
+            where T.inscricao ='${inscricaoTerritorialFormated}'
               and U.fields -> 'cd_classe' = '${uso}'
               and Z.fields -> 'nome' = '${tp_zo}'
             `);
@@ -395,7 +409,7 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
                 on ST_Intersects(T.geoinformation, Z.geoinformation)
               left join urbano.usos U
                 on U.fields -> 'lei' = Z.fields -> 'lei_2'
-          where replace(T.inscricao,'.','')='${inscricaoTerritorial}'
+          where T.inscricao ='${inscricaoTerritorialFormated}'
             and U.fields -> 'cd_classe' = '${uso}'
             and Z.fields -> 'nome' = '${tp_zo}'
           `);
@@ -539,7 +553,6 @@ async function getZonValida(inscricaoImobiliaria) {
 
   const inscricaoImobiliariaFormated = `${inscricaoImobiliaria.slice(0, 2)}.${inscricaoImobiliaria.slice(2, 4)}.${inscricaoImobiliaria.slice(4, 7)}.${inscricaoImobiliaria.slice(7, 11)}.${inscricaoImobiliaria.slice(11, 14)}`;
 
-
   try {
     const { rows: search } = await connection.raw(`
       select distinct on (e.cd_logr,e.tp_zon)
@@ -567,7 +580,7 @@ async function getZonValida(inscricaoImobiliaria) {
                   st_intersection(c.geom_lote, d.geoinformation) as intersecao
             from (select distinct
                           t3.logradouro_id as cd_logr,
-                          substring(regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g'), 1, 11) as cd_lote,
+                          substring(a.inscricao, 1, 14) as cd_lote,
                           t3.geoinformation as geom_centerline,
                           t.geoinformation  as geom_lote,
                           st_area(ST_Intersection(t.geoinformation, t3.geoinformation)) as area_inter_lote_centerline,
@@ -722,7 +735,7 @@ async function verificaLogrStm(inscricao){
                 st_intersection(c.geom_lote, d.geoinformation) as intersecao
           from (select distinct
                         t3.logradouro_id as cd_logr,
-                        substring(regexp_replace(a.inscricao, '[[:alpha:](.)]', '', 'g'), 1, 11) as cd_lote,
+                        substring(a.inscricao, 1, 14) as cd_lote,
                         t3.geoinformation as geom_centerline,
                         t.geoinformation  as geom_lote,
                         st_area(ST_Intersection(t.geoinformation, t3.geoinformation)) as area_inter_lote_centerline,
