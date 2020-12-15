@@ -235,11 +235,15 @@ async function getArrayUsos(codUso, leiMae, numTent) {
   }
 }
 
+var array_val = null;
+
 async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
   var array_ret = [];
   var cont_tmp = 0;
 
-  var array_val = await getZonValida(inscricaoImobiliaria);
+  if (!array_val) {
+    array_val = await getZonValida(inscricaoImobiliaria);
+  }
 
   const inscricaoTerritorialFormated = `${inscricaoTerritorial.slice(0, 2)}.${inscricaoTerritorial.slice(2, 4)}.${inscricaoTerritorial.slice(4, 7)}.${inscricaoTerritorial.slice(7, 11)}`;
 
