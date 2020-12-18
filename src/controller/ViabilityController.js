@@ -16,7 +16,9 @@ module.exports = {
 
       let inscricaoFormated = inscricaoImobiliaria.replace(/([^0-9])/g, '');
 
-      if (inscricaoFormated.length !== 17) {
+      console.log(inscricaoFormated.length)
+
+      if (inscricaoFormated.length !== 17 && inscricaoFormated.length !== 14) {
         array_val = null;
         globalSearch = [];
         return res.status(400).json({ erro: 'Inscrição inválida!' });
@@ -99,7 +101,7 @@ module.exports = {
               de_zon: array_parecer[i].zon,
               parecer,
               porcentagem: array_parecer[i].porcentagem,
-              viavel: (array_parecer[i].letra_parecer === 'A'),
+              viavel: (array_parecer[i].letra_parecer === 'A' || array_parecer[i].letra_parecer === 'A-'),
             });
           }
         } else {
@@ -278,8 +280,6 @@ async function getParecer(inscricaoImobiliaria, inscricaoTerritorial, uso) {
               where L.inscricao ='${inscricaoTerritorialFormated}'))
       `);
       globalSearch = search;
-
-      console.log(search)
     }
 
 
